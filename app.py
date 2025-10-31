@@ -1,4 +1,4 @@
-# app_final.py — Smart Summarizer v4 (All Requests Included)
+# app_supabase.py — Smart Summarizer v5 (Gemini + Supabase)
 import streamlit as st
 import google.generativeai as genai
 from langdetect import detect
@@ -9,56 +9,33 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
+from supabase import create_client
 
 # -------------------- Page Config --------------------
-st.set_page_config(page_title="Smart Summarizer v4", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="Smart Summarizer v5", page_icon="🧠", layout="wide")
 
 # -------------------- CSS & Background --------------------
 st.markdown("""
 <style>
-/* Animated gradient background */
 :root {--g1:#0f172a; --g2:#021124; --g3:#062b2f;}
-.app-bg {
-  position: fixed; inset:0;
-  background: linear-gradient(120deg,#0f172a,#0b3a4a,#09304b,#05323a);
-  background-size:400% 400%;
-  animation: gradientMove 18s ease infinite;
-  z-index:-1;
-  filter: blur(20px) saturate(110%);
-  opacity:0.95;
-}
-@keyframes gradientMove {
-0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}
-}
-
-/* TextArea */
-textarea, .stTextArea textarea {
-  background: rgba(0,0,0,0.2) !important;
-  color: #f8f8f8 !important;
-  border-radius: 8px !important;
-  padding: 10px !important;
-}
-
-/* Button */
-.stButton>button {
-  background: linear-gradient(90deg,#6ee7b7,#3b82f6) !important;
-  color: #041025 !important;
-  font-weight:700;
-  border-radius:10px !important;
-  padding: 8px 14px !important;
-}
-</style>
-<div class="app-bg"></div>
+.app-bg { position: fixed; inset:0; background: linear-gradient(120deg,#0f172a,#0b3a4a,#09304b,#05323a);
+background-size:400% 400%; animation: gradientMove 18s ease infinite; z-index:-1; filter: blur(20px) saturate(110%); opacity:0.95;}
+@keyframes gradientMove {0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+textarea, .stTextArea textarea { background: rgba(0,0,0,0.2) !important; color: #f8f8f8 !important; border-radius: 8px !important; padding: 10px !important;}
+.stButton>button { background: linear-gradient(90deg,#6ee7b7,#3b82f6) !important; color: #041025 !important; font-weight:700; border-radius:10px !important; padding: 8px 14px !important;}
+</style><div class="app-bg"></div>
 """, unsafe_allow_html=True)
 
-st.title("✨ Smart Summarizer v4 — Gemini-2.5-Flash")
-st.markdown("**تلخيص ذكي، ترجمة، رفع ملفات، تنزيل، واجهة حديثة**")
+st.title("✨ Smart Summarizer v5 — Gemini + Supabase")
+st.markdown("**تلخيص ذكي، ترجمة، رفع ملفات، تخزين النتائج في Supabase، تنزيل ملفات**")
 
-# -------------------- API Key --------------------
-if "GEMINI_API_KEY" not in st.secrets:
-    st.error("ضع GEMINI_API_KEY في .streamlit/secrets.toml")
+# -------------------- API Keys --------------------
+if "GEMINI_API_KEY" not in st.secrets or "SUPABASE_URL" not in st.secrets or "SUPABASE_KEY" not in st.secrets:
+    st.error("ضع GEMINI_API_KEY و SUPABASE_URL و SUPABASE_KEY في .streamlit/secrets.toml")
     st.stop()
+
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 # -------------------- Helpers --------------------
 def extract_text_from_file_bytes(file_bytes: bytes, filename: str) -> str:
@@ -196,25 +173,17 @@ if action_btn:
                 "input_text": final_input,
                 "created_at": datetime.datetime.utcnow().isoformat()
             }
+            # -------------------- Save to Supabase --------------------
+            try:
+                supabase.table("summaries").insert({
+                    "title": result["title"],
+                    "summary": result["summary"],
+                    "translation": result.get("translation",""),
+                    "keywords": result["keywords"],
+                    "language": result["language"],
+                    "original_text": result["input_text"]
+                }).execute()
+            except Exception as e:
+                st.error(f"خطأ في حفظ البيانات في Supabase: {e}")
             st.session_state["last_result"] = result
-        st.success("✅ تم التلخيص.")
-
-# -------------------- Display result --------------------
-last = st.session_state.get("last_result")
-if last:
-    st.markdown(f"### 📘 {last.get('title')}")
-    st.write(f"**اللغة:** {last.get('language')}")
-    tabs = st.tabs(["📝 الملخص","🌍 الترجمة","🏷️ الكلمات المفتاحية","📄 النص الأصلي","⬇️ تنزيل"])
-    with tabs[0]: st.write(last.get("summary"))
-    with tabs[1]:
-        if last.get("translation"): st.write(last.get("translation"))
-        else: st.info("لا توجد ترجمة.")
-    with tabs[2]: st.write(", ".join(last.get("keywords",[])))
-    with tabs[3]:
-        st.text_area("النص الأصلي:", last.get("input_text","")[:2000]+"..." if len(last.get("input_text",""))>2000 else last.get("input_text",""), height=200)
-    with tabs[4]:
-        pdf_buf = create_pdf_buffer(last)
-        docx_buf = create_docx_buffer(last)
-        fname = clean_filename(last.get("title","summary"))
-        st.download_button("📕 تحميل PDF", pdf_buf, file_name=f"{fname}.pdf", mime="application/pdf")
-        st.download_button("📘 تحميل Word", docx_buf, file_name=f"{fname}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        st.success("✅ تم التلخيص وحفظ الن
