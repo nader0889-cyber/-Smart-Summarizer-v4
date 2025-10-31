@@ -1,4 +1,4 @@
-# app_supabase.py — Smart Summarizer v5 (Gemini + Supabase)
+# app.py — Smart Summarizer v5 (Gemini + Supabase)
 import streamlit as st
 import google.generativeai as genai
 from langdetect import detect
@@ -178,12 +178,4 @@ if action_btn:
                 supabase.table("summaries").insert({
                     "title": result["title"],
                     "summary": result["summary"],
-                    "translation": result.get("translation",""),
-                    "keywords": result["keywords"],
-                    "language": result["language"],
-                    "original_text": result["input_text"]
-                }).execute()
-            except Exception as e:
-                st.error(f"خطأ في حفظ البيانات في Supabase: {e}")
-            st.session_state["last_result"] = result
-        st.success("✅ تم التلخيص وحفظ الن
+                    "translation": result.get("translation","
